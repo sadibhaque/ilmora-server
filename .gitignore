@@ -1,0 +1,17 @@
+node_modules
+.env
+.vercel
+firebaseAccessTokenKey.json
+serviceAccount*.json
+serviceAccountKey.json
+*.firebase.json
+secrets.json
+credentials.json
+*.sql
+*.sqlite
+logs
+*.log
+npm-debug.log*
+.DS_Store
+.vscode
+.idea
