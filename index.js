@@ -59,7 +59,6 @@ async function run() {
 
         const database = client.db("ilmora").collection("quotes");
 
-
         app.post("/add-quote", verifyFirebaseToken, async (req, res) => {
             const quote = req.body;
             const result = await client
@@ -76,23 +75,20 @@ async function run() {
         });
 
         app.get("/pending-quotes", verifyFirebaseToken, async (req, res) => {
-            const cursor = database.find();
             const query = { status: "pending" };
-            const quotes = await cursor.toArray(query);
+            const quotes = await database.find(query).toArray();
             res.send(quotes);
         });
 
         app.get("/approved-quotes", verifyFirebaseToken, async (req, res) => {
-            const cursor = database.find();
             const query = { status: "approved" };
-            const quotes = await cursor.toArray(query);
+            const quotes = await database.find(query).toArray();
             res.send(quotes);
         });
 
         app.get("/rejected-quotes", verifyFirebaseToken, async (req, res) => {
-            const cursor = database.find();
             const query = { status: "rejected" };
-            const quotes = await cursor.toArray(query);
+            const quotes = await database.find(query).toArray();
             res.send(quotes);
         });
 
