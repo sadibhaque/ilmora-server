@@ -60,18 +60,37 @@ async function run() {
         const database = client.db("ilmora").collection("quotes");
 
         app.post("/add-quote", verifyFirebaseToken, async (req, res) => {
-            const quote = req.body;
-            const result = await client
-                .db("ilmora")
-                .collection("quotes")
-                .insertOne(quote);
-            res.send(result);
+            try {
+                const quote = {
+                    ...req.body,
+                    createdAt: new Date(),
+                    submitted_by: req.decoded.uid, // Add user ID from Firebase token
+                    status: "pending", // Set default status
+                };
+                const result = await client
+                    .db("ilmora")
+                    .collection("quotes")
+                    .insertOne(quote);
+                res.send(result);
+            } catch (err) {
+                console.error(err);
+                res.status(500).send({ message: "Failed to add quote" });
+            }
         });
-
         app.get("/quotes", verifyFirebaseToken, async (req, res) => {
             const cursor = database.find();
             const quotes = await cursor.toArray();
             res.send(quotes);
+        });
+
+        app.get("/check-admin", verifyFirebaseToken, async (req, res) => {
+            const email = "admin@admin.com";
+            const query = { email: email };
+            const user = await client
+                .db("ilmora")
+                .collection("admin")
+                .findOne(query);
+            res.send(user);
         });
 
         app.get("/pending-quotes", verifyFirebaseToken, async (req, res) => {
@@ -80,7 +99,7 @@ async function run() {
             res.send(quotes);
         });
 
-        app.get("/approved-quotes", verifyFirebaseToken, async (req, res) => {
+        app.get("/approved-quotes", async (req, res) => {
             const query = { status: "approved" };
             const quotes = await database.find(query).toArray();
             res.send(quotes);
@@ -99,40 +118,6 @@ async function run() {
             res.send(quote);
         });
 
-        app.patch(
-            "/increase-like-count/:id",
-            verifyFirebaseToken,
-            async (req, res) => {
-                const { id } = req.params;
-                const result = await client
-                    .db("ilmora")
-                    .collection("quotes")
-                    .findOneAndUpdate(
-                        { _id: new ObjectId(id) },
-                        { $inc: { added: 1 } },
-                        { returnDocument: "after" }
-                    );
-                res.send(result.value);
-            }
-        );
-
-        app.patch(
-            "/decrease-like-count/:id",
-            verifyFirebaseToken,
-            async (req, res) => {
-                const { id } = req.params;
-                const result = await client
-                    .db("ilmora")
-                    .collection("quotes")
-                    .findOneAndUpdate(
-                        { _id: new ObjectId(id) },
-                        { $inc: { added: -1 } },
-                        { returnDocument: "after" }
-                    );
-                res.send(result.value);
-            }
-        );
-
         app.delete(
             "/remove-quote/:id",
             verifyFirebaseToken,
@@ -147,15 +132,6 @@ async function run() {
             }
         );
 
-        app.post("/enroll", verifyFirebaseToken, async (req, res) => {
-            const item = req.body;
-            const result = await client
-                .db("eduflexDB")
-                .collection("enrolled")
-                .insertOne(item);
-            res.send(result);
-        });
-
         app.get(
             "/get-posted-quotes/:email",
             verifyFirebaseToken,
@@ -169,6 +145,143 @@ async function run() {
                     .find(query)
                     .toArray();
                 res.send(quotes);
+            }
+        );
+
+        app.get("/my-quotes", verifyFirebaseToken, async (req, res) => {
+            try {
+                const userId = req.decoded.uid; // Get user ID from Firebase token
+                const query = { submitted_by: userId }; // Filter by user ID
+                const quotes = await database.find(query).toArray();
+                res.send(quotes);
+            } catch (err) {
+                console.error(err);
+                res.status(500).send({
+                    message: "Failed to fetch user quotes",
+                });
+            }
+        });
+
+        app.delete(
+            "/delete-my-quote/:id",
+            verifyFirebaseToken,
+            async (req, res) => {
+                try {
+                    const { id } = req.params;
+                    const userId = req.decoded.uid;
+
+                    // First check if the quote exists and belongs to the user
+                    const quote = await database.findOne({
+                        _id: new ObjectId(id),
+                        submitted_by: userId,
+                    });
+
+                    if (!quote) {
+                        return res.status(404).send({
+                            message:
+                                "Quote not found or you don't have permission to delete it",
+                        });
+                    }
+
+                    // Check if quote is approved - approved quotes cannot be deleted
+                    if (quote.status === "approved") {
+                        return res.status(403).send({
+                            message: "Cannot delete approved quotes",
+                        });
+                    }
+
+                    // Delete the quote
+                    const result = await database.deleteOne({
+                        _id: new ObjectId(id),
+                        submitted_by: userId,
+                    });
+
+                    if (result.deletedCount === 0) {
+                        return res.status(404).send({
+                            message: "Quote not found",
+                        });
+                    }
+
+                    res.send({
+                        message: "Quote deleted successfully",
+                        deletedId: id,
+                    });
+                } catch (err) {
+                    console.error(err);
+                    res.status(500).send({
+                        message: "Failed to delete quote",
+                    });
+                }
+            }
+        );
+
+        app.patch(
+            "/approve-quote/:id",
+            verifyFirebaseToken,
+            async (req, res) => {
+                try {
+                    const { id } = req.params;
+                    const filter = { _id: new ObjectId(id) };
+                    const update = {
+                        $set: { status: "approved", approvedAt: new Date() },
+                    };
+                    const result = await client
+                        .db("ilmora")
+                        .collection("quotes")
+                        .findOneAndUpdate(filter, update, {
+                            returnDocument: "after",
+                        });
+
+                    if (!result) {
+                        return res
+                            .status(404)
+                            .send({ message: "Quote not found" });
+                    }
+
+                    res.send(result);
+                } catch (err) {
+                    console.error(err);
+                    res.status(500).send({
+                        message: "Failed to approve quote",
+                    });
+                }
+            }
+        );
+
+        app.patch(
+            "/reject-quote/:id",
+            verifyFirebaseToken,
+            async (req, res) => {
+                try {
+                    const { id } = req.params;
+                    const { notes } = req.body;
+                    const filter = { _id: new ObjectId(id) };
+                    const update = {
+                        $set: {
+                            status: "rejected",
+                            rejectedAt: new Date(),
+                            rejectionNotes: notes || null,
+                        },
+                    };
+
+                    const result = await client
+                        .db("ilmora")
+                        .collection("quotes")
+                        .findOneAndUpdate(filter, update, {
+                            returnDocument: "after",
+                        });
+
+                    if (!result) {
+                        return res
+                            .status(404)
+                            .send({ message: "Quote not found" });
+                    }
+
+                    res.send(result);
+                } catch (err) {
+                    console.error(err);
+                    res.status(500).send({ message: "Failed to reject quote" });
+                }
             }
         );
 

@@ -19,6 +19,7 @@
     "firebase-admin": "^13.4.0",
     "jsonwebtoken": "^9.0.2",
     "mongodb": "^6.16.0",
-    "nodemon": "^3.1.10"
+    "nodemon": "^3.1.10",
+    "vercel": "^47.0.5"
   }
 }
